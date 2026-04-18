@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "odh-codeserver"
+version = "4.106.3"
+description = "Pre-compiled code-server standalone release for ODH workbench images"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["odh_codeserver"]
+shared-data = { "odh_codeserver/data" = "share/odh-codeserver" }
+
+[tool.hatch.build.targets.wheel.hooks.custom]
