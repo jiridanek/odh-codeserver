@@ -53,7 +53,11 @@ class CustomBuildHook(BuildHookInterface):
             self._set_platform_tag(build_data)
             return
 
-        self._run_apply_patch(source_code, source_prefetch)
+        patches_applied = root / "prefetch-input" / ".patches-applied"
+        if patches_applied.exists():
+            self._log("Patches already applied (pre-patched sdist), skipping apply-patch.sh")
+        else:
+            self._run_apply_patch(source_code, source_prefetch)
         self._run_npm_ci(source_code, source_prefetch)
         self._run_npm_build(source_code, source_prefetch)
         self._run_npm_build_vscode(source_code, source_prefetch)
@@ -110,14 +114,11 @@ class CustomBuildHook(BuildHookInterface):
         if apply_script.exists():
             shutil.copy2(apply_script, source_code / "apply-patch.sh")
             env = self._build_env(source_code, source_prefetch)
-            # Create a no-op gcc-toolset-14 shim if it doesn't exist (non-RHEL hosts).
-            # apply-patch.sh sources /opt/rh/gcc-toolset-14/enable unconditionally.
-            gcc_shim = Path("/opt/rh/gcc-toolset-14/enable")
-            if not gcc_shim.exists():
+            gcc_enable = Path("/opt/rh/gcc-toolset-14/enable")
+            if not gcc_enable.exists():
                 self._log("gcc-toolset-14 not found, creating no-op shim")
-                gcc_shim.parent.mkdir(parents=True, exist_ok=True)
-                gcc_shim.write_text("# no-op shim for non-RHEL hosts
-")
+                gcc_enable.parent.mkdir(parents=True, exist_ok=True)
+                gcc_enable.write_text("# no-op shim\n")
             self._shell(f"cd {source_code} && bash ./apply-patch.sh", env=env)
 
     def _run_npm_ci(self, source_code: Path, source_prefetch: Path) -> None:
@@ -230,11 +231,7 @@ class CustomBuildHook(BuildHookInterface):
         env["CODESERVER_SOURCE_CODE"] = str(source_code)
         env["CODESERVER_SOURCE_PREFETCH"] = str(source_prefetch)
         env.setdefault("HOME", "/root")
-        # Point HERMETO_OUTPUT at the sdist-bundled cachi2 deps if present,
-        # so setup-offline-binaries.sh and codeserver-offline-env.sh find
-        # the prefetched npm tarballs, ripgrep wheel, etc.
-        root = Path(self.root)
-        bundled_cachi2 = root / "cachi2" / "output"
+        bundled_cachi2 = Path(self.root) / "cachi2" / "output"
         if bundled_cachi2.is_dir():
             env["HERMETO_OUTPUT"] = str(bundled_cachi2)
         return env
