@@ -136,14 +136,17 @@ class CustomBuildHook(BuildHookInterface):
         self._log("npm ci --offline ...")
         root = Path(self.root)
 
-        # setup-offline-binaries.sh sources rewrite-npm-urls.sh from /root/scripts/...
+        # setup-offline-binaries.sh hardcodes /root/scripts/lockfile-generators/rewrite-npm-urls.sh
         rewrite_src = root / "scripts" / "lockfile-generators" / "rewrite-npm-urls.sh"
         if rewrite_src.exists():
-            home = Path(os.environ.get("HOME", "/root"))
-            dest = home / "scripts" / "lockfile-generators"
-            dest.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(rewrite_src, dest / "rewrite-npm-urls.sh")
-            self._log(f"Copied rewrite-npm-urls.sh to {dest}")
+            for dest_base in [Path("/root"), Path(os.environ.get("HOME", "/root"))]:
+                dest = dest_base / "scripts" / "lockfile-generators"
+                try:
+                    dest.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(rewrite_src, dest / "rewrite-npm-urls.sh")
+                    self._log(f"Copied rewrite-npm-urls.sh to {dest}")
+                except OSError as e:
+                    self._log(f"WARNING: Could not copy to {dest}: {e}")
 
         # apply-patch.sh and setup-offline-binaries.sh hardcode /cachi2/output/deps/npm/
         bundled = root / "cachi2" / "output"
