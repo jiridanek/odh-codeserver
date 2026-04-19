@@ -56,6 +56,7 @@ class CustomBuildHook(BuildHookInterface):
         patches_applied = root / "prefetch-input" / ".patches-applied"
         if patches_applied.exists():
             self._log("Patches already applied (pre-patched sdist), skipping apply-patch.sh")
+            self._copy_build_scripts(source_code)
         else:
             self._run_apply_patch(source_code, source_prefetch)
         self._run_npm_ci(source_code, source_prefetch)
@@ -96,6 +97,20 @@ class CustomBuildHook(BuildHookInterface):
     # Build steps
     # ------------------------------------------------------------------
 
+    def _copy_build_scripts(self, source_code: Path) -> None:
+        """Copy build scripts from prefetch-input/patches/ to source_code/patches/.
+
+        These scripts are needed by npm ci even when apply-patch.sh is skipped.
+        """
+        patches_dir = source_code / "prefetch-input" / "patches"
+        target_patches = source_code / "patches"
+        target_patches.mkdir(parents=True, exist_ok=True)
+        for script in ("setup-offline-binaries.sh", "codeserver-offline-env.sh", "tweak-gha.sh"):
+            src = patches_dir / script
+            if src.exists():
+                shutil.copy2(src, target_patches / script)
+                self._log(f"Copied {script} to {target_patches}")
+
     def _run_apply_patch(self, source_code: Path, source_prefetch: Path) -> None:
         self._log("Applying patches ...")
         patches_dir = source_code / "prefetch-input" / "patches"
@@ -103,12 +118,7 @@ class CustomBuildHook(BuildHookInterface):
         if version_overlay.is_dir():
             shutil.copytree(version_overlay, source_prefetch, dirs_exist_ok=True)
 
-        target_patches = source_code / "patches"
-        target_patches.mkdir(parents=True, exist_ok=True)
-        for script in ("setup-offline-binaries.sh", "codeserver-offline-env.sh", "tweak-gha.sh"):
-            src = patches_dir / script
-            if src.exists():
-                shutil.copy2(src, target_patches / script)
+        self._copy_build_scripts(source_code)
 
         apply_script = patches_dir / "apply-patch.sh"
         if apply_script.exists():
@@ -124,20 +134,6 @@ class CustomBuildHook(BuildHookInterface):
     def _run_npm_ci(self, source_code: Path, source_prefetch: Path) -> None:
         """Install npm deps. Always offline -- network is not available."""
         self._log("npm ci --offline ...")
-        root = Path(self.root)
-        # setup-offline-binaries.sh sources rewrite-npm-urls.sh from /root/scripts/...
-        rewrite_src = root / "scripts" / "lockfile-generators" / "rewrite-npm-urls.sh"
-        if rewrite_src.exists():
-            dest = Path("/root/scripts/lockfile-generators")
-            dest.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(rewrite_src, dest / "rewrite-npm-urls.sh")
-        # apply-patch.sh and setup-offline-binaries.sh hardcode /cachi2/output/deps/npm/
-        bundled = root / "cachi2" / "output"
-        cachi2_link = Path("/cachi2/output")
-        if bundled.is_dir() and not cachi2_link.exists():
-            cachi2_link.parent.mkdir(parents=True, exist_ok=True)
-            cachi2_link.symlink_to(bundled)
-            self._log(f"Symlinked {cachi2_link} -> {bundled}")
         env = self._build_env(source_code, source_prefetch)
         self._shell(
             f"cd {source_code} && "
