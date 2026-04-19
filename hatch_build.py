@@ -124,6 +124,20 @@ class CustomBuildHook(BuildHookInterface):
     def _run_npm_ci(self, source_code: Path, source_prefetch: Path) -> None:
         """Install npm deps. Always offline -- network is not available."""
         self._log("npm ci --offline ...")
+        root = Path(self.root)
+        # setup-offline-binaries.sh sources rewrite-npm-urls.sh from /root/scripts/...
+        rewrite_src = root / "scripts" / "lockfile-generators" / "rewrite-npm-urls.sh"
+        if rewrite_src.exists():
+            dest = Path("/root/scripts/lockfile-generators")
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(rewrite_src, dest / "rewrite-npm-urls.sh")
+        # apply-patch.sh and setup-offline-binaries.sh hardcode /cachi2/output/deps/npm/
+        bundled = root / "cachi2" / "output"
+        cachi2_link = Path("/cachi2/output")
+        if bundled.is_dir() and not cachi2_link.exists():
+            cachi2_link.parent.mkdir(parents=True, exist_ok=True)
+            cachi2_link.symlink_to(bundled)
+            self._log(f"Symlinked {cachi2_link} -> {bundled}")
         env = self._build_env(source_code, source_prefetch)
         self._shell(
             f"cd {source_code} && "
